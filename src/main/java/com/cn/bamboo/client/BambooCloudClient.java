@@ -8,7 +8,6 @@ import com.google.gson.*;
 
 import javax.crypto.SecretKey;
 import java.util.*;
-import java.util.logging.Logger;
 
 import static com.cn.bamboo.util.Utils.*;
 
@@ -16,6 +15,7 @@ public class BambooCloudClient {
 
     private AuthData user = new AuthData();
     private BambuCloudHandler handler = new BambuCloudHandler();
+    private static final Gson GSON = new GsonBuilder().create();
 
     public void login(String account, String password){
 
@@ -26,13 +26,13 @@ public class BambooCloudClient {
             loginByCloudApi(account, password);
         }
 
-        saveLocalData(encrypt( new Gson().toJson(user), generateAESKey(password)));
+        saveLocalData(encrypt(GSON.toJson(user), generateAESKey(password)));
     }
 
     private void loginByLocal(String info, String password){
         SecretKey secretKey = generateAESKey(password);
         String decrypted = decrypt(info, secretKey);
-        user = new Gson().fromJson(decrypted, AuthData.class);
+        user = GSON.fromJson(decrypted, AuthData.class);
         if(!Objects.isNull(user)) return;
     }
 
@@ -51,7 +51,7 @@ public class BambooCloudClient {
         if(!Utils.isEmpty(devices)){
             JsonObject jsonObject = new JsonParser().parse(devices).getAsJsonObject();
             if(jsonObject.has("devices") && !Utils.isEmpty(jsonObject.get("devices").toString())){
-                JsonArray jsonElements = new Gson().fromJson(jsonObject.get("devices").toString(),JsonArray.class);
+                JsonArray jsonElements = GSON.fromJson(jsonObject.get("devices").toString(),JsonArray.class);
                 if(jsonElements.size() != 0){
                     List<ProductInfo> productInfos = new ArrayList<>();
                     jsonElements.forEach(jsonElement -> {

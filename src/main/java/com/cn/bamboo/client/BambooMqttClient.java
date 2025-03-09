@@ -21,8 +21,9 @@ public class BambooMqttClient {
     private String userName;
     private String password;
     private String deviceId;
-    private SSLContext sslContext;
-    private boolean tlsInsecure;
+
+    private static final String TLS_VERSION = "TLSv1.2";
+    private static final String CLIENT_ID = "A1-Test";
 
     public BambooMqttClient(String mqttUrl, Integer port, String userName,
                             String password, String deviceId){
@@ -38,7 +39,7 @@ public class BambooMqttClient {
         if(Objects.isNull(mqttClient)){
             try {
                 mqttClient = new MqttClient(this.mqttUrl +":" + String.valueOf(this.port),
-                        "A1-Test");
+                        CLIENT_ID);
 
                 MqttConnectOptions options = new MqttConnectOptions();
                 try{
@@ -55,8 +56,9 @@ public class BambooMqttClient {
                         public void connectComplete(boolean b, String s) {
                             try {
                                 subscribeBambuTopic();
-                            } catch (MqttException e) {
-                                throw new RuntimeException("Connect complete subcribe topic error!");
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                throw new IllegalStateException("发布Mqtt消息失败！");
                             }
                         }
 
@@ -78,24 +80,26 @@ public class BambooMqttClient {
                     });
                     mqttClient.connect(options);
                 } catch (MqttException e) {
-                    throw new RuntimeException(e);
+                    e.printStackTrace();
+                    throw new MqttException(MqttException.REASON_CODE_SERVER_CONNECT_ERROR);
                 }
             } catch (Exception e) {
                 e.printStackTrace();
-                throw new RuntimeException("Init mqtt client error!");
+                throw new IllegalStateException("初始化Mqtt客户端失败!");
             }
         }
     }
 
     public void publishBambuToic(String command) {
         if (mqttClient == null || !mqttClient.isConnected()) {
-            throw new RuntimeException("Mqtt client is not connected!");
+            throw new IllegalStateException("Mqtt客户端未连接！");
         }
 
         try {
             publishCommand(MessageFormat.format(Const.BAMBOO_MQTT_PUBLISH,deviceId), command);
-        } catch (MqttException e) {
-            throw new RuntimeException(e);
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new IllegalStateException("Mqtt消息发布失败!");
         }
     }
 
@@ -109,7 +113,7 @@ public class BambooMqttClient {
 
     private void subscribeBambuTopic() throws MqttException {
         if (mqttClient == null || !mqttClient.isConnected()) {
-            throw new MqttException(MqttException.REASON_CODE_CLIENT_NOT_CONNECTED);
+            throw new IllegalStateException("Mqtt客户端未连接！");
         }
 
         subcribeCommand(MessageFormat.format(Const.BAMBOO_MQTT_SUBCRIBE,deviceId));
@@ -122,46 +126,50 @@ public class BambooMqttClient {
     private SSLContext configureTls(
                                     String caCertPath, String clientCertPath,
                                     String clientKeyPath, String keyPassword) throws Exception {
-        TrustManagerFactory tmf = null;
-        X509Certificate caCert = null;
+        TrustManagerFactory tmf;
         KeyManagerFactory kmf = null;
 
-        // 1. 加载CA证书
-        CertificateFactory cf = CertificateFactory.getInstance("X.509");
-        if(!Utils.isEmpty(caCertPath)){
-            caCert = (X509Certificate) cf.generateCertificate(
-                    new FileInputStream(caCertPath));
-        }
+        // 1. 初始化TrustManagerFactory
+        if (!Utils.isEmpty(caCertPath)) {
+            // 自定义CA证书逻辑
+            try (FileInputStream fis = new FileInputStream(caCertPath)) {
+                CertificateFactory cf = CertificateFactory.getInstance("X.509");
+                X509Certificate caCert = (X509Certificate) cf.generateCertificate(fis);
 
-        KeyStore clientKeyStore = KeyStore.getInstance("PKCS12");
-        if(!Objects.isNull(caCert)){
-            // 2. 创建KeyStore并加载CA证书
-            KeyStore caKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-            caKeyStore.setCertificateEntry("caCert", caCert);
-            // 3. 创建TrustManagerFactory
-            tmf = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm());
-            tmf.init(caKeyStore);
+                KeyStore caKeyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+                caKeyStore.load(null, null);
+                caKeyStore.setCertificateEntry("caCert", caCert);
 
-            // 4. 加载客户端证书和私钥
-            clientKeyStore.load(new FileInputStream(clientCertPath),
-                        keyPassword.toCharArray());
-
-            // 5. 创建KeyManagerFactory
-            kmf = KeyManagerFactory.getInstance(
-                    KeyManagerFactory.getDefaultAlgorithm());
-            kmf.init(clientKeyStore, Utils.isEmpty(keyPassword)?null:keyPassword.toCharArray());
+                tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+                tmf.init(caKeyStore);
+            }
         } else {
-            clientKeyStore.load(null, null);
-            tmf = TrustManagerFactory.getInstance(
-                    TrustManagerFactory.getDefaultAlgorithm());
-            tmf.init((KeyStore) null); // 关键变化：加载默认CA证书
+            // 使用系统默认证书
+            tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+            tmf.init((KeyStore) null);
         }
 
-        // 6. 创建SSLContext
-        SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
-        sslContext.init(Objects.isNull(kmf)?null:kmf.getKeyManagers(), tmf.getTrustManagers(), null);
+        // 2. 初始化KeyManagerFactory（如果需要客户端证书）
+        if (!Utils.isEmpty(clientCertPath)) {
+            try (FileInputStream fis = new FileInputStream(clientCertPath)) {
+                KeyStore clientKeyStore = KeyStore.getInstance("PKCS12");
+                clientKeyStore.load(fis, keyPassword.toCharArray());
+
+                kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+                kmf.init(clientKeyStore, keyPassword.toCharArray());
+            }
+        }
+
+        // 3. 创建SSLContext
+        SSLContext sslContext = SSLContext.getInstance(TLS_VERSION);
+        sslContext.init(kmf != null ? kmf.getKeyManagers() : null,
+                tmf.getTrustManagers(),
+                null);
 
         return  sslContext;
+    }
+
+    public boolean isConnected() {
+        return mqttClient != null && mqttClient.isConnected();
     }
 }

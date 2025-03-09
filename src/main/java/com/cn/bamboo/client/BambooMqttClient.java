@@ -68,7 +68,7 @@ public class BambooMqttClient {
                         }
 
                         @Override
-                        public void messageArrived(String topic, MqttMessage mqttMessage) throws Exception {
+                        public void messageArrived(String topic, MqttMessage mqttMessage){
                             System.out.println("receive " + topic + " message:");
                             System.out.println(new String(mqttMessage.getPayload()));
                         }

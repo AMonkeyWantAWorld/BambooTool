@@ -33,7 +33,6 @@ public class BambooCloudClient {
         SecretKey secretKey = generateAESKey(password);
         String decrypted = decrypt(info, secretKey);
         user = GSON.fromJson(decrypted, AuthData.class);
-        if(!Objects.isNull(user)) return;
     }
 
     private void loginByCloudApi(String account, String password){

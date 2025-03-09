@@ -3,11 +3,9 @@ package com.cn.bamboo.api;
 import com.cn.bamboo.model.AuthData;
 import com.cn.bamboo.util.Const;
 import com.cn.bamboo.util.Utils;
-import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import jdk.jshell.execution.Util;
 
 import java.util.Base64;
 import java.util.HashMap;
@@ -35,6 +33,10 @@ public class BambuCloudHandler implements BambuCloudApi {
         userMap.put("code",user.getVerifyCode());
 
         String result = post(Const.BAMBOO_LOGIN_API, userMap);
+        if(Utils.isEmpty(result)){
+            throw new IllegalStateException("登录接口返回为空！");
+        }
+
         JsonObject jsonObject = new JsonParser().parse(result).getAsJsonObject();
         if(!jsonObject.has("accessToken")){
             throw new IllegalStateException("响应中缺少accessToken字段！");
@@ -57,6 +59,10 @@ public class BambuCloudHandler implements BambuCloudApi {
         }
 
         String projectsInfo = get(Const.BAMBOO_PROJECTS_API, accessToken);
+        if(Utils.isEmpty(projectsInfo)){
+            throw new IllegalStateException("项目接口获取数据为空！");
+        }
+
         JsonObject projectsResponse = JsonParser.parseString(projectsInfo).getAsJsonObject();
         return extractUserIdFromProjects(projectsResponse);
     }
